@@ -25,7 +25,7 @@ class DCRNNModel(object):
         filter_type = model_kwargs.get('filter_type', 'laplacian')
         horizon = int(model_kwargs.get('horizon', 1))
         max_grad_norm = float(model_kwargs.get('max_grad_norm', 5.0))
-        num_nodes = int(model_kwargs.get('num_nodes', 1))
+        num_nodes = int(adj_mx.shape[0])
         num_rnn_layers = int(model_kwargs.get('num_rnn_layers', 1))
         rnn_units = int(model_kwargs.get('rnn_units'))
         seq_len = int(model_kwargs.get('seq_len'))
@@ -34,9 +34,18 @@ class DCRNNModel(object):
         output_dim = int(model_kwargs.get('output_dim', 1))
 
         # Input (batch_size, timesteps, num_sensor, input_dim)
-        self._inputs = tf.placeholder(tf.float32, shape=(batch_size, seq_len, num_nodes, input_dim), name='inputs')
+        # DCRNN x shape:  (52093, 12, 325, 2) , y shape:  (52093, 12, 325, 2)
+
+        # Stream train_x: (5332, 12, 715), train_y: (5332, 12, 715)
+        self._inputs = tf.placeholder(tf.float64, shape=(batch_size, seq_len, num_nodes, input_dim), name='inputs')
+        #################################################
+        # self._inputs = tf.placeholder(tf.float64, shape=(batch_size, seq_len, num_nodes), name='inputs')
+        #################################################
         # Labels: (batch_size, timesteps, num_sensor, input_dim), same format with input except the temporal dimension.
-        self._labels = tf.placeholder(tf.float32, shape=(batch_size, horizon, num_nodes, input_dim), name='labels')
+        self._labels = tf.placeholder(tf.float64, shape=(batch_size, horizon, num_nodes, output_dim), name='labels')
+        #################################################
+        # self._labels = tf.placeholder(tf.float64, shape=(batch_size, horizon, num_nodes), name='labels')
+        #################################################
 
         # GO_SYMBOL = tf.zeros(shape=(batch_size, num_nodes * input_dim))
         GO_SYMBOL = tf.zeros(shape=(batch_size, num_nodes * output_dim))
@@ -54,8 +63,7 @@ class DCRNNModel(object):
         # Outputs: (batch_size, timesteps, num_nodes, output_dim)
         with tf.variable_scope('DCRNN_SEQ'):
             inputs = tf.unstack(tf.reshape(self._inputs, (batch_size, seq_len, num_nodes * input_dim)), axis=1)
-            labels = tf.unstack(
-                tf.reshape(self._labels[..., :output_dim], (batch_size, horizon, num_nodes * output_dim)), axis=1)
+            labels = tf.unstack(tf.reshape(self._labels, (batch_size, horizon, num_nodes * output_dim)), axis=1)
             labels.insert(0, GO_SYMBOL)
 
             def _loop_function(prev, i):
@@ -64,7 +72,7 @@ class DCRNNModel(object):
                     if use_curriculum_learning:
                         c = tf.random_uniform((), minval=0, maxval=1.)
                         threshold = self._compute_sampling_threshold(global_step, cl_decay_steps)
-                        result = tf.cond(tf.less(c, threshold), lambda: labels[i], lambda: prev)
+                        result = tf.cond(tf.less(tf.cast(c, dtype='float64'), threshold), lambda: labels[i], lambda: prev)
                     else:
                         result = labels[i]
                 else:
@@ -72,13 +80,18 @@ class DCRNNModel(object):
                     result = prev
                 return result
 
-            _, enc_state = tf.contrib.rnn.static_rnn(encoding_cells, inputs, dtype=tf.float32)
-            outputs, final_state = legacy_seq2seq.rnn_decoder(labels, enc_state, decoding_cells,
+            _, enc_state = tf.contrib.rnn.static_rnn(encoding_cells, inputs, dtype=tf.float64)
+
+            outputs, final_state = legacy_seq2seq.rnn_decoder(labels, enc_state , decoding_cells,
                                                               loop_function=_loop_function)
 
         # Project the output to output_dim.
-        outputs = tf.stack(outputs[:-1], axis=1)
+        outputs = tf.stack(outputs[:], axis=1)
+        
+        #################################################
         self._outputs = tf.reshape(outputs, (batch_size, horizon, num_nodes, output_dim), name='outputs')
+        #################################################
+        # self._outputs = tf.reshape(outputs, (batch_size, horizon, num_nodes), name='outputs')
         self._merged = tf.summary.merge_all()
 
     @staticmethod
@@ -89,7 +102,7 @@ class DCRNNModel(object):
         :param k:
         :return:
         """
-        return tf.cast(k / (k + tf.exp(global_step / k)), tf.float32)
+        return tf.cast(k / (k + tf.exp(global_step / k)), tf.float64)
 
     @property
     def inputs(self):

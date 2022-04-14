@@ -21,8 +21,8 @@ class DCRNNSupervisor(object):
     Do experiments using Graph Random Walk RNN model.
     """
 
-    def __init__(self, adj_mx, **kwargs):
-
+    def __init__(self, adj_mx, year, **kwargs):
+        self.year = year
         self._kwargs = kwargs
         self._data_kwargs = kwargs.get('data')
         self._model_kwargs = kwargs.get('model')
@@ -36,7 +36,7 @@ class DCRNNSupervisor(object):
         self._logger.info(kwargs)
 
         # Data preparation
-        self._data = utils.load_dataset(**self._data_kwargs)
+        self._data = utils.load_dataset(self.year, **self._data_kwargs)
         for k, v in self._data.items():
             if hasattr(v, 'shape'):
                 self._logger.info((k, v.shape))
@@ -56,10 +56,10 @@ class DCRNNSupervisor(object):
                                               adj_mx=adj_mx, **self._model_kwargs)
 
         # Learning rate.
-        self._lr = tf.get_variable('learning_rate', shape=(), initializer=tf.constant_initializer(0.01),
+        self._lr = tf.get_variable('learning_rate', shape=(), initializer=tf.constant_initializer(0.01), dtype ='float64',
                                    trainable=False)
-        self._new_lr = tf.placeholder(tf.float32, shape=(), name='new_learning_rate')
-        self._lr_update = tf.assign(self._lr, self._new_lr, name='lr_update')
+        self._new_lr = tf.placeholder(tf.float64, shape=(), name='new_learning_rate')
+        self._lr_update = tf.assign(self._lr, self._new_lr , name='lr_update')
 
         # Configure optimizer
         optimizer_name = self._train_kwargs.get('optimizer', 'adam').lower()
@@ -82,7 +82,13 @@ class DCRNNSupervisor(object):
         tvars = tf.trainable_variables()
         grads = tf.gradients(self._train_loss, tvars)
         max_grad_norm = kwargs['train'].get('max_grad_norm', 1.)
+        grads[-1] = tf.cast(grads[-1], dtype='float64')
         grads, _ = tf.clip_by_global_norm(grads, max_grad_norm)
+
+        ############ GRADS ?????????
+        # grads = tf.concat([tf.reshape(g, [-1]) for g in grads], axis=0)
+        # print('grads info', grads)
+
         global_step = tf.train.get_or_create_global_step()
         self._train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=global_step, name='train_op')
 
@@ -195,6 +201,11 @@ class DCRNNSupervisor(object):
         max_to_keep = train_kwargs.get('max_to_keep', 100)
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=max_to_keep)
         model_filename = train_kwargs.get('model_filename')
+
+        ########################
+        use_time = []
+        ########################
+
         if model_filename is not None:
             saver.restore(sess, model_filename)
             self._epoch = epoch + 1
@@ -218,6 +229,16 @@ class DCRNNSupervisor(object):
                 break
 
             global_step = sess.run(tf.train.get_or_create_global_step())
+
+            ########################
+            end_time = time.time()
+            if epoch == 0:
+                total_time = (end_time - start_time).total_seconds()
+            else:
+                total_time += (end_time - start_time).total_seconds()
+            use_time.append((end_time - start_time).total_seconds())
+            ########################
+            
             # Compute validation error.
             val_results = self.run_epoch_generator(sess, self._test_model,
                                                    self._data['val_loader'].get_iterator(),
@@ -227,7 +248,7 @@ class DCRNNSupervisor(object):
             utils.add_simple_summary(self._writer,
                                      ['loss/train_loss', 'metric/train_mae', 'loss/val_loss', 'metric/val_mae'],
                                      [train_loss, train_mae, val_loss, val_mae], global_step=global_step)
-            end_time = time.time()
+            
             message = 'Epoch [{}/{}] ({}) train_mae: {:.4f}, val_mae: {:.4f} lr:{:.6f} {:.1f}s'.format(
                 self._epoch, epochs, global_step, train_mae, val_mae, new_lr, (end_time - start_time))
             self._logger.info(message)

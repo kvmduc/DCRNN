@@ -106,7 +106,7 @@ class DCGRUCell(RNNCell):
                     w = tf.get_variable('w', shape=(self._num_units, self._num_proj))
                     batch_size = inputs.get_shape()[0].value
                     output = tf.reshape(new_state, shape=(-1, self._num_units))
-                    output = tf.reshape(tf.matmul(output, w), shape=(batch_size, self.output_size))
+                    output = tf.reshape(tf.matmul(output, tf.cast(w, dtype='float64')), shape=(batch_size, self.output_size))
         return output, new_state
 
     @staticmethod

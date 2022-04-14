@@ -5,6 +5,7 @@ import pickle
 import scipy.sparse as sp
 import sys
 import tensorflow as tf
+import os.path as osp
 
 from scipy.sparse import linalg
 
@@ -21,12 +22,12 @@ class DataLoader(object):
         self.batch_size = batch_size
         self.current_ind = 0
         if pad_with_last_sample:
-            num_padding = (batch_size - (len(xs) % batch_size)) % batch_size
+            num_padding = (batch_size - (xs.shape[0] % batch_size)) % batch_size
             x_padding = np.repeat(xs[-1:], num_padding, axis=0)
             y_padding = np.repeat(ys[-1:], num_padding, axis=0)
             xs = np.concatenate([xs, x_padding], axis=0)
             ys = np.concatenate([ys, y_padding], axis=0)
-        self.size = len(xs)
+        self.size = len(xs.shape[0])
         self.num_batch = int(self.size // self.batch_size)
         if shuffle:
             permutation = np.random.permutation(self.size)
@@ -175,13 +176,17 @@ def get_total_trainable_parameter_size():
     return total_parameters
 
 
-def load_dataset(dataset_dir, batch_size, test_batch_size=None, **kwargs):
+def load_dataset(year, dataset_dir, batch_size, test_batch_size=None, **kwargs):
     data = {}
     for category in ['train', 'val', 'test']:
-        cat_data = np.load(os.path.join(dataset_dir, category + '.npz'))
-        data['x_' + category] = cat_data['x']
-        data['y_' + category] = cat_data['y']
-    scaler = StandardScaler(mean=data['x_train'][..., 0].mean(), std=data['x_train'][..., 0].std())
+        # cat_data = np.load(os.path.join(dataset_dir, category + '.npz'))
+        cat_data = np.load(osp.join(dataset_dir, str(year)+"_30day.npz"), allow_pickle=True)
+        data['x_' + category] = cat_data[category + '_x']
+        data['y_' + category] = cat_data[category + '_x']
+        data['x_' + category] = tf.expand_dims(data['x_' + category], axis = -1)
+        data['y_' + category] = tf.expand_dims(data['y_' + category], axis = -1)
+
+    scaler = StandardScaler(mean=tf.reduce_mean(data['x_train'][..., 0]), std=tf.reduce_mean(data['x_train'][..., 0]))
     # Data format
     for category in ['train', 'val', 'test']:
         data['x_' + category][..., 0] = scaler.transform(data['x_' + category][..., 0])

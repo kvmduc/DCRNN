@@ -14,7 +14,7 @@ def masked_mse_tf(preds, labels, null_val=np.nan):
         mask = ~tf.is_nan(labels)
     else:
         mask = tf.not_equal(labels, null_val)
-    mask = tf.cast(mask, tf.float32)
+    mask = tf.cast(mask, tf.float64)
     mask /= tf.reduce_mean(mask)
     mask = tf.where(tf.is_nan(mask), tf.zeros_like(mask), mask)
     loss = tf.square(tf.subtract(preds, labels))
@@ -35,7 +35,7 @@ def masked_mae_tf(preds, labels, null_val=np.nan):
         mask = ~tf.is_nan(labels)
     else:
         mask = tf.not_equal(labels, null_val)
-    mask = tf.cast(mask, tf.float32)
+    mask = tf.cast(mask, tf.float64)
     mask /= tf.reduce_mean(mask)
     mask = tf.where(tf.is_nan(mask), tf.zeros_like(mask), mask)
     loss = tf.abs(tf.subtract(preds, labels))
@@ -65,9 +65,9 @@ def masked_mse_np(preds, labels, null_val=np.nan):
             mask = ~np.isnan(labels)
         else:
             mask = np.not_equal(labels, null_val)
-        mask = mask.astype('float32')
+        mask = mask.astype('float64')
         mask /= np.mean(mask)
-        rmse = np.square(np.subtract(preds, labels)).astype('float32')
+        rmse = np.square(np.subtract(preds, labels)).astype('float64')
         rmse = np.nan_to_num(rmse * mask)
         return np.mean(rmse)
 
@@ -78,9 +78,9 @@ def masked_mae_np(preds, labels, null_val=np.nan):
             mask = ~np.isnan(labels)
         else:
             mask = np.not_equal(labels, null_val)
-        mask = mask.astype('float32')
+        mask = mask.astype('float64')
         mask /= np.mean(mask)
-        mae = np.abs(np.subtract(preds, labels)).astype('float32')
+        mae = np.abs(np.subtract(preds, labels)).astype('float64')
         mae = np.nan_to_num(mae * mask)
         return np.mean(mae)
 
@@ -91,9 +91,9 @@ def masked_mape_np(preds, labels, null_val=np.nan):
             mask = ~np.isnan(labels)
         else:
             mask = np.not_equal(labels, null_val)
-        mask = mask.astype('float32')
+        mask = mask.astype('float64')
         mask /= np.mean(mask)
-        mape = np.abs(np.divide(np.subtract(preds, labels).astype('float32'), labels))
+        mape = np.abs(np.divide(np.subtract(preds, labels).astype('float64'), labels))
         mape = np.nan_to_num(mask * mape)
         return np.mean(mape)
 
